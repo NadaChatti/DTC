@@ -33,7 +33,6 @@ class Drive(Dataset):
         self.image_list = [os.path.splitext(image_name)[0] for image_name in self.image_list]
         self.image_list.sort()
 
-        self._prepare_data(split)
 
         self.image_list = [item.replace('\n','') for item in self.image_list]
         if num is not None:
@@ -55,44 +54,6 @@ class Drive(Dataset):
 
         return sample
 
-    def _prepare_data(self, split):
-
-        self._create_list_file(split)
-
-        if not os.path.exists(self._data_dir):
-            os.makedirs(self._data_dir)
-
-        if not os.listdir(self._data_dir):
-            for image_name, label_name in zip(self.image_list, self.label_list):
-                image_path = self.path + 'images/' + image_name + ".tif"
-                
-                tiff_image = Image.open(image_path)
-                tiff_array = np.array(tiff_image)                
-                
-                if split == "train":
-                    label_path = self.path + '1st_manual/' + label_name + ".gif" if split == "train" else ""
-                    gif_image = Image.open(label_path)
-                    gif_array = np.array(gif_image)
-                else:
-                    gif_array = []
-
-                # Create a new HDF5 file
-                hdf5_path = self._data_dir + image_name + '.h5'
-                hdf5_file = h5py.File(hdf5_path, 'w')
-
-                # Create datasets in the HDF5 file and write the image arrays
-                hdf5_file.create_dataset('image', data=tiff_array)
-                hdf5_file.create_dataset('label', data=gif_array)
-
-                # Close the HDF5 file
-                hdf5_file.close()
-    
-    def _create_list_file(self, file_name):
-        output_file = self._base_dir + file_name + '.list'   
-        if not os.path.exists(output_file):
-            with open(output_file, 'w') as f:
-                for image_name in self.image_list:
-                    f.write(image_name + '\n')
 
 class CenterCrop(object):
     def __init__(self, output_size):
@@ -210,7 +171,7 @@ class ToTensor(object):
 
     def __call__(self, sample):
         image = sample['image']
-        image = image.reshape(image.shape[2], image.shape[0], image.shape[1]).astype(np.float32)
+        image = np.moveaxis(image, -1, 0).astype(np.float32)
         if 'onehot_label' in sample:
             a = {'image': torch.from_numpy(image), 'label': torch.from_numpy(sample['label']).long(),
                     'onehot_label': torch.from_numpy(sample['onehot_label']).long()}

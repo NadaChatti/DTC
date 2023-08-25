@@ -1,5 +1,6 @@
 import os
 import sys
+import cv2
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 import shutil
@@ -36,7 +37,7 @@ parser.add_argument('--exp', type=str,
                     default='DRIVE/DTC_with_consis_weight', help='model_name')
 parser.add_argument('--max_iterations', type=int,
                     default=6000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=2,
+parser.add_argument('--batch_size', type=int, default=4,
                     help='batch_size per gpu')
 parser.add_argument('--labeled_bs', type=int, default=1,
                     help='labeled_batch_size per gpu')
@@ -90,7 +91,7 @@ torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
 
 num_classes = 2
-patch_size = (112, 112)
+patch_size = (112, 112, 3)
 
 
 def get_current_consistency_weight(epoch):
@@ -168,16 +169,13 @@ if __name__ == "__main__":
     iterator = tqdm(range(max_epoch), ncols=70)
     for epoch_num in iterator:
         time1 = time.time()
-        # print("len(trainloader) = {}".format(len(trainloader)))
         for i_batch, sampled_batch in enumerate(trainloader):
             time2 = time.time()
             # print('fetch data cost {}'.format(time2-time1))
 
             volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
-            # print("size {}".format(volume_batch.size()))
-
             volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
-            # print("size {}".format(volume_batch.size()))
+            
             outputs_tanh, outputs = model(volume_batch)
             outputs_soft = torch.sigmoid(outputs)
 
@@ -224,29 +222,33 @@ if __name__ == "__main__":
             writer.add_scalar('loss/loss', loss, iter_num)
             logging.info('iteration %d : loss : %f' % (iter_num, loss.item()))
             if iter_num % 50 == 0:
-                image = volume_batch
-                grid_image = make_grid(image, 5, normalize=True)
+                image = volume_batch[0, :, :, :]
+                grid_image = make_grid(image, 1, normalize=True)
                 writer.add_image('train/Image', grid_image, iter_num)
 
-                image = outputs_soft
-                grid_image = make_grid(image, 5, normalize=False)
+                image = outputs_soft[0, :, :, :]
+                grid_image = make_grid(image, 1, normalize=False)
                 writer.add_image('train/Predicted_label', grid_image, iter_num)
 
-                image = dis_to_mask
-                grid_image = make_grid(image, 5, normalize=False)
+                image = dis_to_mask[0, :, :, :]
+                grid_image = make_grid(image, 1, normalize=False)
                 writer.add_image('train/Dis2Mask', grid_image, iter_num)
 
-                image = outputs_tanh
-                grid_image = make_grid(image, 5, normalize=False)
+                image = outputs_tanh[0, :, :, :]
+                grid_image = make_grid(image, 1, normalize=False)
                 writer.add_image('train/DistMap', grid_image, iter_num)
-
-                image = label_batch
-                grid_image = make_grid(image, 5, normalize=False)
+                
+                # cv2 test
+                # file = 'ToWriteLabel.jpg'
+                # cv2.imwrite(file, label_batch[0, :, :].cpu().numpy())
+                
+                image = torch.from_numpy(label_batch[0, :, :].cpu().numpy().astype(np.uint8)).cuda()
+                grid_image = make_grid(image, 1, normalize=False)
                 writer.add_image('train/Groundtruth_label',
                                  grid_image, iter_num)
 
                 image = gt_dis[0, :, :]
-                grid_image = make_grid(image, 5, normalize=False)
+                grid_image = make_grid(image, 1, normalize=False)
                 writer.add_image('train/Groundtruth_DistMap',
                                  grid_image, iter_num)
                 
